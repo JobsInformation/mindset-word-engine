@@ -1,0 +1,125 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum GameMode {
+  BLITZ_SIMULTANEOUS
+  CLASSIC_ASYNC
+}
+
+enum MatchStatus {
+  WAITING
+  ACTIVE
+  COMPLETED
+  ABANDONED
+}
+
+model User {
+  id            String   @id @default(cuid())
+  username      String   @unique
+  email         String   @unique
+  eloRating     Int      @default(1200)
+  gamesPlayed   Int      @default(0)
+  gamesWon      Int      @default(0)
+  maxStreak     Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  matchesAsP1   Match[]          @relation("PlayerOne")
+  matchesAsP2   Match[]          @relation("PlayerTwo")
+  turns         Turn[]
+  ratingHistory EloHistory[]
+  analytics     EagleAnalytics[]
+
+  @@index([eloRating])
+}
+
+model Match {
+  id              String      @id @default(cuid())
+  mode            GameMode    @default(BLITZ_SIMULTANEOUS)
+  status          MatchStatus @default(WAITING)
+
+  playerOneId     String
+  playerOne       User        @relation("PlayerOne", fields: [playerOneId], references: [id])
+  playerTwoId     String?
+  playerTwo       User?       @relation("PlayerTwo", fields: [playerTwoId], references: [id])
+
+  boardState      Json
+  tileBag         Json
+  p1Rack          Json
+  p2Rack          Json
+
+  p1Score         Int         @default(0)
+  p2Score         Int         @default(0)
+  p1SharkStreak   Int         @default(0)
+  p2SharkStreak   Int         @default(0)
+
+  currentTurnNum  Int         @default(1)
+  activePlayerId  String?
+  turnExpiresAt   DateTime?
+  winnerId        String?
+
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  turns           Turn[]
+  analytics       EagleAnalytics[]
+
+  @@index([status, mode])
+}
+
+model Turn {
+  id              String   @id @default(cuid())
+  matchId         String
+  match           Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  playerId        String
+  player          User     @relation(fields: [playerId], references: [id])
+
+  turnNumber      Int
+  wordPlayed      String
+  placedTiles     Json
+  baseScore       Int
+  sharkMultiplier Float    @default(1.0)
+  trapPenalty     Int      @default(0)
+  finalScore      Int
+  decisionTimeMs  Int
+  createdAt       DateTime @default(now())
+
+  @@index([matchId, turnNumber])
+}
+
+model EagleAnalytics {
+  id               String   @id @default(cuid())
+  matchId          String
+  match            Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  playerId         String
+  player           User     @relation(fields: [playerId], references: [id])
+
+  heatmapMatrix    Json
+  missedBestWords  Json
+  avgDecisionMs    Int
+  sharkBonusEarned Int
+  trapsTriggered   Int
+  createdAt        DateTime @default(now())
+
+  @@unique([matchId, playerId])
+}
+
+model EloHistory {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  matchId     String
+  oldRating   Int
+  newRating   Int
+  ratingDelta Int
+  createdAt   DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
