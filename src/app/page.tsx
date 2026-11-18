@@ -59,7 +59,7 @@ function playSound(type: 'pop' | 'success' | 'error' | 'hint' | 'shuffle') {
       osc.stop(now + 0.2);
     }
   } catch {
-    // Ignore autoplay restrictions
+    // Ignore audio errors
   }
 }
 
@@ -86,6 +86,9 @@ export default function MindsetKidsArena() {
   const [soundOn, setSoundOn] = useState(true);
   const [celebrationBanner, setCelebrationBanner] = useState<string | null>(null);
   const [eagleHints, setEagleHints] = useState<HintSuggestion[]>([]);
+  const [playedWordsLog, setPlayedWordsLog] = useState<{ word: string; score: number; by: string }[]>([]);
+  const [unlockedBadges, setUnlockedBadges] = useState<string[]>([]);
+  const [lastEloDelta, setLastEloDelta] = useState<number>(0);
   const trieRef = useRef<BinaryTrieEngine | null>(null);
 
   useEffect(() => {
@@ -117,6 +120,10 @@ export default function MindsetKidsArena() {
     if (soundOn) playSound(type);
   }
 
+  function awardBadge(badge: string) {
+    setUnlockedBadges((prev) => (prev.includes(badge) ? prev : [...prev, badge]));
+  }
+
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     triggerSound('pop');
@@ -131,7 +138,7 @@ export default function MindsetKidsArena() {
       setMascotSpeech({
         animal: '🦈',
         name: 'Speedy Shark',
-        text: `Awesome to meet you, ${data.user.username}! Ready for a word adventure?`,
+        text: `Awesome to meet you, ${data.user.username}! Ready for a 5-Round Word Island battle?`,
       });
     }
   }
@@ -157,18 +164,19 @@ export default function MindsetKidsArena() {
       setRack(data.match.playerOneId === user.id ? data.match.p1Rack : data.match.p2Rack);
       setDraftTiles([]);
       setEagleHints([]);
+      setPlayedWordsLog([]);
       setTimeLeft(45);
       setTurnStartMs(Date.now());
       setMascotSpeech({
         animal: '⭐',
         name: 'Star Guide',
-        text: 'Tap a letter tile below, then tap the middle Gold Star (★) — or tap 🦅 Hint! for ideas!',
+        text: 'Round 1 of 5! Tap a tile below and place it on the Gold Star (★) — or tap 🦅 Hint!',
       });
     }
   }
 
   function handleCellClick(r: number, c: number) {
-    if (!board) return;
+    if (!board || match?.status !== 'ACTIVE') return;
 
     const existingDraftIdx = draftTiles.findIndex((d) => d.row === r && d.col === c);
     if (existingDraftIdx !== -1) {
@@ -210,7 +218,31 @@ export default function MindsetKidsArena() {
     setSelectedRackIdx(null);
   }
 
-  // Board-Aware Eagle Hint Finder: finds valid placements on the Star (Turn 1) or hooked to existing board letters!
+  async function swapNewLetters() {
+    if (!match || !user) return;
+    triggerSound('shuffle');
+    const res = await fetch('/api/match/swap', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ matchId: match.id, playerId: user.id }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      triggerSound('error');
+      setMascotSpeech({ animal: '🦊', name: 'Clever Fox', text: data.error });
+      return;
+    }
+    setMatch(data.match);
+    setRack(data.match.p1Rack);
+    setDraftTiles([]);
+    setEagleHints([]);
+    setMascotSpeech({
+      animal: '🎁',
+      name: 'Treasure Chest',
+      text: 'Fresh batch of 7 letters drawn from the treasure bag!',
+    });
+  }
+
   function askEagleForHint() {
     if (!trieRef.current || !board || rack.length === 0) return;
     triggerSound('hint');
@@ -220,7 +252,6 @@ export default function MindsetKidsArena() {
     const isBoardEmpty = board[7][7].tile === null;
 
     if (isBoardEmpty) {
-      // Turn 1: Find words from the 7-tile rack and place horizontally across (7,7)
       const searchRack = (chosen: RackTile[], usedMask: number) => {
         if (chosen.length >= 2) {
           const word = chosen.map((t) => t.letter.toUpperCase()).join('');
@@ -245,13 +276,11 @@ export default function MindsetKidsArena() {
       };
       searchRack([], 0);
     } else {
-      // Subsequent turns: Try hooking 1–3 rack letters after or before existing tiles on the board
       for (let r = 0; r < 15 && suggestions.length < 5; r++) {
         for (let c = 0; c < 15 && suggestions.length < 5; c++) {
           const anchorTile = board[r][c].tile;
           if (!anchorTile) continue;
 
-          // Try extending horizontally to the right of (r, c)
           if (c > 0 && board[r][c - 1].tile === null) {
             for (let i = 0; i < rack.length; i++) {
               if (c + 1 < 15 && board[r][c + 1].tile === null && (c + 2 >= 15 || board[r][c + 2].tile === null)) {
@@ -264,7 +293,6 @@ export default function MindsetKidsArena() {
                   });
                 }
               }
-              // Try 2 letters after anchor
               for (let j = 0; j < rack.length; j++) {
                 if (i === j) continue;
                 if (c + 2 < 15 && board[r][c + 1].tile === null && board[r][c + 2].tile === null && (c + 3 >= 15 || board[r][c + 3].tile === null)) {
@@ -284,7 +312,6 @@ export default function MindsetKidsArena() {
             }
           }
 
-          // Try extending vertically below (r, c)
           if (r > 0 && board[r - 1][c].tile === null) {
             for (let i = 0; i < rack.length; i++) {
               if (r + 1 < 15 && board[r + 1][c].tile === null && (r + 2 >= 15 || board[r + 2][c].tile === null)) {
@@ -311,7 +338,7 @@ export default function MindsetKidsArena() {
       text:
         topHints.length > 0
           ? `I spotted ${topHints.length} playable words! Tap any purple hint pill below to place it on the board!`
-          : 'No easy match right now — tap 🔀 Mix Letters or try building off a different letter!',
+          : 'Tricky tiles! Tap 🔄 New Letters to draw 7 fresh tiles from the bag!',
     });
   }
 
@@ -322,7 +349,7 @@ export default function MindsetKidsArena() {
     setMascotSpeech({
       animal: '🦅',
       name: 'Professor Eagle',
-      text: `"${hint.word}" is placed on the board! Tap ✅ Play Word! to score your points!`,
+      text: `"${hint.word}" is placed on the board! Tap ✅ Play Word! to score your stars!`,
     });
   }
 
@@ -354,6 +381,21 @@ export default function MindsetKidsArena() {
 
     triggerSound('success');
     const v = data.validation;
+    const updatedLog = [...playedWordsLog, { word: v.primaryWord, score: v.finalScore, by: 'You' }];
+    if (data.botMove) {
+      updatedLog.push({ word: data.botMove.word, score: data.botMove.score, by: '🤖 Bot' });
+    }
+    setPlayedWordsLog(updatedLog);
+
+    if (v.nextStreak >= 2) awardBadge('🦈 Speed Shark');
+    if (v.primaryWord.length >= 4) awardBadge('🦅 Word Builder');
+    if (v.trapPenalty === 0 && v.finalScore >= 15) awardBadge('🦊 Trap Dodger');
+
+    if (data.eloDelta) {
+      setLastEloDelta(data.eloDelta);
+      setUser((prev: any) => ({ ...prev, eloRating: prev.eloRating + data.eloDelta }));
+    }
+
     setMatch(data.match);
     setBoard(data.match.boardState);
     setRack(data.match.playerOneId === user.id ? data.match.p1Rack : data.match.p2Rack);
@@ -365,24 +407,75 @@ export default function MindsetKidsArena() {
     setCelebrationBanner(`🎉 +${v.finalScore} STARS! "${v.primaryWord}"`);
     setTimeout(() => setCelebrationBanner(null), 3000);
 
+    const botReply = data.botMove
+      ? ` 🤖 APEX Bot countered with "${data.botMove.word}" (+${data.botMove.score})!`
+      : '';
+
     setMascotSpeech({
       animal: v.nextStreak > 0 ? '🦈' : '🦅',
       name: v.nextStreak > 0 ? 'Speedy Shark' : 'Professor Eagle',
-      text:
-        v.nextStreak > 0
-          ? `SUPER FAST! "${v.primaryWord}" earned +${v.finalScore} points with a ${v.sharkMultiplier}x Shark Speed Boost!`
-          : `Great spelling! "${v.primaryWord}" scored +${v.finalScore} points!`,
+      text: `You scored +${v.finalScore} with "${v.primaryWord}"!${botReply}`,
     });
   }
 
   const usedRackIds = new Set(draftTiles.map((d) => d.rackId));
   const timerPercent = Math.max(5, Math.round((timeLeft / 45) * 100));
+  const roundDisplay = match ? Math.min(5, match.currentTurnNum) : 1;
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-sky-900 via-indigo-950 to-slate-950 text-white p-3 sm:p-5 flex flex-col items-center select-none">
       {celebrationBanner && (
         <div className="fixed top-6 z-50 animate-bounce bg-gradient-to-r from-amber-400 via-yellow-300 to-amber-400 text-slate-950 font-black text-lg sm:text-2xl px-6 py-3 rounded-full shadow-2xl border-4 border-white">
           {celebrationBanner}
+        </div>
+      )}
+
+      {/* Eagle Vision End-of-Match Victory Trophy Modal */}
+      {match && match.status === 'COMPLETED' && (
+        <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="max-w-md w-full bg-gradient-to-b from-indigo-900 to-slate-900 border-4 border-amber-400 rounded-3xl p-6 text-center shadow-2xl">
+            <div className="text-6xl mb-2 animate-bounce">
+              {match.p1Score >= match.p2Score ? '🏆' : '🥈'}
+            </div>
+            <h2 className="text-2xl font-black text-amber-300">
+              {match.p1Score >= match.p2Score ? 'VICTORY ON WORD ISLAND!' : 'GREAT EFFORT, EXPLORER!'}
+            </h2>
+            <p className="text-xs text-sky-200 font-bold mt-1">
+              🦅 Eagle Vision Post-Match Summary
+            </p>
+
+            <div className="grid grid-cols-2 gap-3 my-4">
+              <div className="bg-emerald-500/20 border border-emerald-400/50 rounded-2xl p-3">
+                <div className="text-xs font-bold text-emerald-200">Your Final Stars</div>
+                <div className="text-3xl font-black text-amber-400">{match.p1Score}</div>
+              </div>
+              <div className="bg-purple-500/20 border border-purple-400/50 rounded-2xl p-3">
+                <div className="text-xs font-bold text-purple-200">🤖 APEX Bot</div>
+                <div className="text-3xl font-black text-rose-300">{match.p2Score}</div>
+              </div>
+            </div>
+
+            <div className="bg-white/10 rounded-2xl p-3 mb-4 text-left max-h-36 overflow-y-auto">
+              <div className="text-xs font-black uppercase text-amber-300 mb-1.5">Words Played This Match:</div>
+              {playedWordsLog.map((entry, idx) => (
+                <div key={idx} className="flex justify-between text-xs py-0.5 border-b border-white/10">
+                  <span className="font-bold">{entry.by}: <span className="text-amber-200">{entry.word}</span></span>
+                  <span className="font-black text-emerald-300">+{entry.score} ⭐</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="text-sm font-black text-cyan-300 mb-4">
+              Rating Change: {lastEloDelta >= 0 ? `+${lastEloDelta}` : lastEloDelta} ⭐ (Now {user?.eloRating})
+            </div>
+
+            <button
+              onClick={() => startMatch(true)}
+              className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-slate-950 font-black text-base shadow-lg border-b-4 border-orange-700"
+            >
+              🚀 Play Another 5-Round Match!
+            </button>
+          </div>
         </div>
       )}
 
@@ -414,6 +507,18 @@ export default function MindsetKidsArena() {
           )}
         </div>
       </header>
+
+      {/* Unlocked Explorer Badges Bar */}
+      {unlockedBadges.length > 0 && (
+        <div className="max-w-3xl w-full flex flex-wrap items-center gap-2 mb-3 px-2">
+          <span className="text-xs font-black text-amber-300">🏅 Badges:</span>
+          {unlockedBadges.map((b) => (
+            <span key={b} className="text-xs bg-amber-400/20 border border-amber-300/50 text-amber-200 px-2.5 py-0.5 rounded-full font-extrabold">
+              {b}
+            </span>
+          ))}
+        </div>
+      )}
 
       <div className="max-w-3xl w-full flex items-center gap-3 bg-gradient-to-r from-indigo-600/60 to-purple-600/60 border-2 border-indigo-400/50 rounded-2xl p-3 mb-4 shadow-xl">
         <div className="text-4xl sm:text-5xl bg-white/15 p-2 rounded-2xl shadow-inner shrink-0">
@@ -456,8 +561,8 @@ export default function MindsetKidsArena() {
             className="flex flex-col items-center gap-2 p-6 rounded-3xl bg-gradient-to-b from-emerald-400 to-teal-600 hover:from-emerald-300 hover:to-teal-500 text-slate-950 font-black shadow-xl border-b-4 border-teal-800 active:translate-y-0.5 transition"
           >
             <span className="text-4xl">🤖</span>
-            <span className="text-lg">Play vs Friendly Bot</span>
-            <span className="text-xs font-bold text-slate-900/80">Practice spelling & earn Shark boosts!</span>
+            <span className="text-lg">5-Round Battle vs AI Bot</span>
+            <span className="text-xs font-bold text-slate-900/80">Bot plays back after every turn!</span>
           </button>
           <button
             onClick={() => startMatch(false)}
@@ -473,12 +578,14 @@ export default function MindsetKidsArena() {
           <div className="flex flex-col items-center gap-3 w-full max-w-3xl">
             <div className="w-full flex flex-wrap items-center justify-between gap-2 bg-slate-900/80 px-4 py-2.5 rounded-2xl border border-white/15">
               <div className="flex items-center gap-2">
-                <span className="text-xl">🏅</span>
-                <span className="text-sm font-bold text-sky-200">Your Stars:</span>
+                <span className="text-xs bg-indigo-500/40 border border-indigo-300/40 px-2.5 py-1 rounded-lg font-black text-indigo-100">
+                  Round {roundDisplay}/5
+                </span>
+                <span className="text-sm font-bold text-sky-200">You:</span>
                 <span className="text-2xl font-black text-amber-400">{match.p1Score}</span>
                 {match.p1SharkStreak > 0 && (
                   <span className="text-xs bg-amber-400 text-slate-950 font-black px-2 py-0.5 rounded-full animate-pulse">
-                    🦈 x{(1 + match.p1SharkStreak * 0.1).toFixed(1)} Speed!
+                    🦈 x{(1 + match.p1SharkStreak * 0.1).toFixed(1)}
                   </span>
                 )}
               </div>
@@ -502,7 +609,7 @@ export default function MindsetKidsArena() {
 
               <div className="flex items-center gap-1.5 text-sm font-bold text-purple-300">
                 <span>🤖 Bot:</span>
-                <span className="text-lg font-black">{match.p2Score}</span>
+                <span className="text-xl font-black text-rose-300">{match.p2Score}</span>
               </div>
             </div>
 
@@ -591,22 +698,28 @@ export default function MindsetKidsArena() {
               })}
             </div>
 
-            <div className="flex flex-wrap justify-center gap-2.5 mt-1">
+            <div className="flex flex-wrap justify-center gap-2 mt-1">
               <button
                 onClick={shuffleRack}
-                className="px-4 py-2.5 rounded-2xl bg-sky-600 hover:bg-sky-500 text-white text-xs sm:text-sm font-extrabold border-b-4 border-sky-800 active:translate-y-0.5 transition"
+                className="px-3.5 py-2.5 rounded-2xl bg-sky-600 hover:bg-sky-500 text-white text-xs sm:text-sm font-extrabold border-b-4 border-sky-800 active:translate-y-0.5 transition"
               >
-                🔀 Mix Letters
+                🔀 Mix
+              </button>
+              <button
+                onClick={swapNewLetters}
+                className="px-3.5 py-2.5 rounded-2xl bg-amber-600 hover:bg-amber-500 text-white text-xs sm:text-sm font-extrabold border-b-4 border-amber-800 active:translate-y-0.5 transition"
+              >
+                🔄 New Letters
               </button>
               <button
                 onClick={recallTiles}
-                className="px-4 py-2.5 rounded-2xl bg-slate-700 hover:bg-slate-600 text-white text-xs sm:text-sm font-extrabold border-b-4 border-slate-900 active:translate-y-0.5 transition"
+                className="px-3.5 py-2.5 rounded-2xl bg-slate-700 hover:bg-slate-600 text-white text-xs sm:text-sm font-extrabold border-b-4 border-slate-900 active:translate-y-0.5 transition"
               >
-                ↩️ Take Back
+                ↩️ Clear
               </button>
               <button
                 onClick={askEagleForHint}
-                className="px-4 py-2.5 rounded-2xl bg-purple-600 hover:bg-purple-500 text-white text-xs sm:text-sm font-extrabold border-b-4 border-purple-900 active:translate-y-0.5 transition animate-pulse"
+                className="px-4 py-2.5 rounded-2xl bg-purple-600 hover:bg-purple-500 text-white text-xs sm:text-sm font-extrabold border-b-4 border-purple-900 active:translate-y-0.5 transition"
               >
                 🦅 Hint!
               </button>
