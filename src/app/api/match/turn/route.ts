@@ -102,8 +102,8 @@ export async function POST(req: NextRequest) {
       boardState[t.row][t.col].bonusUsed = true;
     }
 
-    const tileBag = [...(match.tileBag as RackTile[])];
-    const currentRack = [...((isP1 ? match.p1Rack : match.p2Rack) as RackTile[])];
+    const tileBag = [...(match.tileBag as unknown as RackTile[])];
+    const currentRack = [...((isP1 ? match.p1Rack : match.p2Rack) as unknown as RackTile[])];
     for (const p of placedTiles) {
       const idx = currentRack.findIndex((r) => r.letter.toUpperCase() === p.letter.toUpperCase());
       if (idx !== -1) currentRack.splice(idx, 1);
