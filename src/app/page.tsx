@@ -1,8 +1,18 @@
 'use client';
 
 import React, { useEffect, useState, useRef, useMemo } from 'react';
+import dynamic from 'next/dynamic';
 import { BinaryTrieEngine } from '@/engine/trieEngine';
 import { BoardMatrix, PlacedTile, RackTile } from '@/engine/types';
+
+const Board3D = dynamic(() => import('@/components/Board3D'), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-[380px] sm:h-[470px] rounded-3xl bg-sky-950/80 border-2 border-sky-400/30 flex items-center justify-center text-sky-200 font-black animate-pulse">
+      🏝️ Loading 3D Word Island...
+    </div>
+  ),
+});
 
 function playSound(type: 'pop' | 'success' | 'error' | 'hint' | 'shuffle') {
   if (typeof window === 'undefined') return;
@@ -59,7 +69,7 @@ function playSound(type: 'pop' | 'success' | 'error' | 'hint' | 'shuffle') {
       osc.stop(now + 0.2);
     }
   } catch {
-    // Ignore audio errors
+    // Ignore autoplay errors
   }
 }
 
@@ -79,11 +89,12 @@ export default function MindsetKidsArena() {
   const [mascotSpeech, setMascotSpeech] = useState({
     animal: '🦁',
     name: 'Captain Leo',
-    text: 'Pick a cool explorer name to jump into Word Island!',
+    text: 'Pick a cool explorer name to jump into 3D Word Island!',
   });
   const [timeLeft, setTimeLeft] = useState(45);
   const [turnStartMs, setTurnStartMs] = useState<number>(0);
   const [soundOn, setSoundOn] = useState(true);
+  const [is3DMode, setIs3DMode] = useState(true);
   const [celebrationBanner, setCelebrationBanner] = useState<string | null>(null);
   const [eagleHints, setEagleHints] = useState<HintSuggestion[]>([]);
   const [playedWordsLog, setPlayedWordsLog] = useState<{ word: string; score: number; by: string }[]>([]);
@@ -138,7 +149,7 @@ export default function MindsetKidsArena() {
       setMascotSpeech({
         animal: '🦈',
         name: 'Speedy Shark',
-        text: `Awesome to meet you, ${data.user.username}! Ready for a 5-Round Word Island battle?`,
+        text: `Welcome ${data.user.username}! Ready to explore the 3D Word Island?`,
       });
     }
   }
@@ -149,7 +160,7 @@ export default function MindsetKidsArena() {
     setMascotSpeech({
       animal: '🦊',
       name: 'Clever Fox',
-      text: 'Building your treasure board with secret Fox Traps and Star bonuses...',
+      text: 'Sculpting your 3D tropical board with Fox Traps and Gold Star squares...',
     });
 
     const res = await fetch('/api/match/queue', {
@@ -170,7 +181,7 @@ export default function MindsetKidsArena() {
       setMascotSpeech({
         animal: '⭐',
         name: 'Star Guide',
-        text: 'Round 1 of 5! Tap a tile below and place it on the Gold Star (★) — or tap 🦅 Hint!',
+        text: 'Round 1 of 5! Tap a wooden tile below, then tap the 3D Gold Star (★) — or tap 🦅 Hint!',
       });
     }
   }
@@ -337,7 +348,7 @@ export default function MindsetKidsArena() {
       name: 'Professor Eagle',
       text:
         topHints.length > 0
-          ? `I spotted ${topHints.length} playable words! Tap any purple hint pill below to place it on the board!`
+          ? `I spotted ${topHints.length} playable words! Tap any purple hint pill below to drop 3D tiles onto the island!`
           : 'Tricky tiles! Tap 🔄 New Letters to draw 7 fresh tiles from the bag!',
     });
   }
@@ -349,7 +360,7 @@ export default function MindsetKidsArena() {
     setMascotSpeech({
       animal: '🦅',
       name: 'Professor Eagle',
-      text: `"${hint.word}" is placed on the board! Tap ✅ Play Word! to score your stars!`,
+      text: `"${hint.word}" is floating on the 3D board! Tap ✅ Play Word! to lock it in!`,
     });
   }
 
@@ -374,7 +385,7 @@ export default function MindsetKidsArena() {
       setMascotSpeech({
         animal: '🐜',
         name: 'Helper Ant',
-        text: `Oops! ${data.error} Tap your yellow tiles or click 🦅 Hint! for help!`,
+        text: `Oops! ${data.error} Tap a floating tile or click 🦅 Hint! for help!`,
       });
       return;
     }
@@ -430,7 +441,6 @@ export default function MindsetKidsArena() {
         </div>
       )}
 
-      {/* Eagle Vision End-of-Match Victory Trophy Modal */}
       {match && match.status === 'COMPLETED' && (
         <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4">
           <div className="max-w-md w-full bg-gradient-to-b from-indigo-900 to-slate-900 border-4 border-amber-400 rounded-3xl p-6 text-center shadow-2xl">
@@ -479,12 +489,12 @@ export default function MindsetKidsArena() {
         </div>
       )}
 
-      <header className="max-w-3xl w-full flex flex-wrap items-center justify-between gap-2 mb-3 bg-white/10 backdrop-blur-md px-4 py-3 rounded-2xl border border-white/20 shadow-lg">
+      <header className="max-w-4xl w-full flex flex-wrap items-center justify-between gap-2 mb-3 bg-white/10 backdrop-blur-md px-4 py-3 rounded-2xl border border-white/20 shadow-lg">
         <div className="flex items-center gap-2.5">
           <span className="text-3xl">🏝️</span>
           <div>
             <h1 className="text-lg sm:text-xl font-black tracking-wide text-amber-300">
-              5-Mindset Word Island
+              3D 5-Mindset Word Island
             </h1>
             <p className="text-[11px] text-sky-200 font-medium">
               🦈 Shark • 🦅 Eagle • 🦬 Bison • 🦊 Fox • 🐜 Ant
@@ -493,24 +503,31 @@ export default function MindsetKidsArena() {
         </div>
 
         <div className="flex items-center gap-2">
+          {match && (
+            <button
+              onClick={() => setIs3DMode(!is3DMode)}
+              className="px-3 py-1.5 rounded-xl bg-indigo-500/40 hover:bg-indigo-500/60 border border-indigo-300/40 text-xs font-black transition"
+            >
+              {is3DMode ? '🧊 3D Island ON' : '📐 2D Top View'}
+            </button>
+          )}
           <button
             onClick={() => setSoundOn(!soundOn)}
             className="px-3 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 text-xs font-bold transition"
           >
-            {soundOn ? '🔊 Sound ON' : '🔇 Muted'}
+            {soundOn ? '🔊 Sound' : '🔇 Muted'}
           </button>
           {user && (
             <div className="flex items-center gap-2 text-xs bg-emerald-500/20 border border-emerald-400/40 px-3 py-1.5 rounded-xl font-bold text-emerald-200">
-              <span>Explorer {user.username}</span>
+              <span>{user.username}</span>
               <span className="bg-amber-400 text-slate-950 px-2 py-0.5 rounded-full">⭐ {user.eloRating}</span>
             </div>
           )}
         </div>
       </header>
 
-      {/* Unlocked Explorer Badges Bar */}
       {unlockedBadges.length > 0 && (
-        <div className="max-w-3xl w-full flex flex-wrap items-center gap-2 mb-3 px-2">
+        <div className="max-w-4xl w-full flex flex-wrap items-center gap-2 mb-3 px-2">
           <span className="text-xs font-black text-amber-300">🏅 Badges:</span>
           {unlockedBadges.map((b) => (
             <span key={b} className="text-xs bg-amber-400/20 border border-amber-300/50 text-amber-200 px-2.5 py-0.5 rounded-full font-extrabold">
@@ -520,7 +537,7 @@ export default function MindsetKidsArena() {
         </div>
       )}
 
-      <div className="max-w-3xl w-full flex items-center gap-3 bg-gradient-to-r from-indigo-600/60 to-purple-600/60 border-2 border-indigo-400/50 rounded-2xl p-3 mb-4 shadow-xl">
+      <div className="max-w-4xl w-full flex items-center gap-3 bg-gradient-to-r from-indigo-600/60 to-purple-600/60 border-2 border-indigo-400/50 rounded-2xl p-3 mb-3 shadow-xl">
         <div className="text-4xl sm:text-5xl bg-white/15 p-2 rounded-2xl shadow-inner shrink-0">
           {mascotSpeech.animal}
         </div>
@@ -551,7 +568,7 @@ export default function MindsetKidsArena() {
             type="submit"
             className="px-6 py-3 rounded-2xl bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-slate-950 font-black text-base shadow-lg border-b-4 border-orange-700 active:translate-y-0.5 transition"
           >
-            🚀 Start Adventure!
+            🚀 Enter 3D Island!
           </button>
         </form>
       ) : !match ? (
@@ -561,21 +578,21 @@ export default function MindsetKidsArena() {
             className="flex flex-col items-center gap-2 p-6 rounded-3xl bg-gradient-to-b from-emerald-400 to-teal-600 hover:from-emerald-300 hover:to-teal-500 text-slate-950 font-black shadow-xl border-b-4 border-teal-800 active:translate-y-0.5 transition"
           >
             <span className="text-4xl">🤖</span>
-            <span className="text-lg">5-Round Battle vs AI Bot</span>
-            <span className="text-xs font-bold text-slate-900/80">Bot plays back after every turn!</span>
+            <span className="text-lg">5-Round 3D Battle vs Bot</span>
+            <span className="text-xs font-bold text-slate-900/80">3D wooden tiles + AI Bot counter-moves!</span>
           </button>
           <button
             onClick={() => startMatch(false)}
             className="flex flex-col items-center gap-2 p-6 rounded-3xl bg-gradient-to-b from-sky-400 to-blue-600 hover:from-sky-300 hover:to-blue-500 text-white font-black shadow-xl border-b-4 border-blue-800 active:translate-y-0.5 transition"
           >
             <span className="text-4xl">🌍</span>
-            <span className="text-lg">Play with a Friend</span>
+            <span className="text-lg">3D Multiplayer Arena</span>
             <span className="text-xs font-bold text-sky-100">Join the live Word Island queue!</span>
           </button>
         </div>
       ) : (
         board && (
-          <div className="flex flex-col items-center gap-3 w-full max-w-3xl">
+          <div className="flex flex-col items-center gap-3 w-full max-w-4xl">
             <div className="w-full flex flex-wrap items-center justify-between gap-2 bg-slate-900/80 px-4 py-2.5 rounded-2xl border border-white/15">
               <div className="flex items-center gap-2">
                 <span className="text-xs bg-indigo-500/40 border border-indigo-300/40 px-2.5 py-1 rounded-lg font-black text-indigo-100">
@@ -626,50 +643,54 @@ export default function MindsetKidsArena() {
               </div>
             )}
 
-            <div
-              style={{ gridTemplateColumns: 'repeat(15, minmax(0, 1fr))' }}
-              className="grid gap-0.5 sm:gap-1 bg-indigo-950/90 p-2 rounded-2xl shadow-2xl border-2 border-indigo-400/40"
-            >
-              {board.map((row, rIdx) =>
-                row.map((cell, cIdx) => {
-                  const draft = draftTiles.find((d) => d.row === rIdx && d.col === cIdx);
-                  const activeTile = draft || cell.tile;
-                  const bonusStyles: Record<string, string> = {
-                    STAR: 'bg-amber-400 text-slate-950 animate-pulse shadow-inner',
-                    TW: 'bg-rose-500/80 text-white',
-                    DW: 'bg-pink-400/70 text-slate-950',
-                    TL: 'bg-sky-500/80 text-white',
-                    DL: 'bg-teal-400/70 text-slate-950',
-                    TRAP: 'bg-purple-700/80 text-amber-200 border border-purple-400/50',
-                    NONE: 'bg-slate-800/90 hover:bg-slate-700 text-slate-500',
-                  };
+            {is3DMode ? (
+              <Board3D board={board} draftTiles={draftTiles} onCellClick={handleCellClick} />
+            ) : (
+              <div
+                style={{ gridTemplateColumns: 'repeat(15, minmax(0, 1fr))' }}
+                className="grid gap-0.5 sm:gap-1 bg-indigo-950/90 p-2 rounded-2xl shadow-2xl border-2 border-indigo-400/40"
+              >
+                {board.map((row, rIdx) =>
+                  row.map((cell, cIdx) => {
+                    const draft = draftTiles.find((d) => d.row === rIdx && d.col === cIdx);
+                    const activeTile = draft || cell.tile;
+                    const bonusStyles: Record<string, string> = {
+                      STAR: 'bg-amber-400 text-slate-950 animate-pulse shadow-inner',
+                      TW: 'bg-rose-500/80 text-white',
+                      DW: 'bg-pink-400/70 text-slate-950',
+                      TL: 'bg-sky-500/80 text-white',
+                      DL: 'bg-teal-400/70 text-slate-950',
+                      TRAP: 'bg-purple-700/80 text-amber-200 border border-purple-400/50',
+                      NONE: 'bg-slate-800/90 hover:bg-slate-700 text-slate-500',
+                    };
 
-                  return (
-                    <button
-                      key={`${rIdx}-${cIdx}`}
-                      onClick={() => handleCellClick(rIdx, cIdx)}
-                      className={`w-6 h-6 sm:w-9 sm:h-9 flex items-center justify-center text-[11px] sm:text-sm font-black rounded-md sm:rounded-lg transition-transform active:scale-90 ${
-                        activeTile
-                          ? draft
-                            ? 'bg-yellow-300 text-slate-950 border-b-2 border-amber-600 scale-105 shadow-md'
-                            : 'bg-amber-100 text-slate-950 border-b-2 border-amber-400'
-                          : bonusStyles[cell.bonus]
-                      }`}
-                    >
-                      {activeTile
-                        ? activeTile.letter
-                        : cell.bonus === 'STAR'
-                        ? '★'
-                        : cell.bonus === 'TRAP'
-                        ? '🦊'
-                        : cell.bonus === 'NONE'
-                        ? ''
-                        : cell.bonus}
-                    </button>
-                  );
-                })
-              )}
-            </div>
+                    return (
+                      <button
+                        key={`${rIdx}-${cIdx}`}
+                        onClick={() => handleCellClick(rIdx, cIdx)}
+                        className={`w-6 h-6 sm:w-9 sm:h-9 flex items-center justify-center text-[11px] sm:text-sm font-black rounded-md sm:rounded-lg transition-transform active:scale-90 ${
+                          activeTile
+                            ? draft
+                              ? 'bg-yellow-300 text-slate-950 border-b-2 border-amber-600 scale-105 shadow-md'
+                              : 'bg-amber-100 text-slate-950 border-b-2 border-amber-400'
+                            : bonusStyles[cell.bonus]
+                        }`}
+                      >
+                        {activeTile
+                          ? activeTile.letter
+                          : cell.bonus === 'STAR'
+                          ? '★'
+                          : cell.bonus === 'TRAP'
+                          ? '🦊'
+                          : cell.bonus === 'NONE'
+                          ? ''
+                          : cell.bonus}
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            )}
 
             <div className="flex flex-wrap justify-center gap-2 mt-1 bg-amber-950/60 px-4 py-3 rounded-2xl border-2 border-amber-700/60 shadow-inner">
               {rack.map((tile, idx) => {
